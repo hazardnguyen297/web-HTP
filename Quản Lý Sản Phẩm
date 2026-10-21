@@ -1,0 +1,219 @@
+(function() {
+  if (document.getElementById('htp-upgrade-loaded')) {
+    alert('Các tính năng nâng cấp đã được bật sẵn rồi!');
+    return;
+  }
+
+  const panel = document.querySelector('#product-main-form') || document.querySelector('form');
+  if (!panel) { alert('Không tìm thấy form sản phẩm!'); return; }
+
+  const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+  const imgInput = fileInputs.find(i => i.name?.toLowerCase().includes('image') || i.accept?.includes('image'));
+  const descInput = fileInputs.find(i => i.name?.toLowerCase().includes('desc') || i.name?.toLowerCase().includes('description'));
+  const specInput = fileInputs.find(i => i.name?.toLowerCase().includes('spec') || i.name?.toLowerCase().includes('json'));
+  const pdfInput = fileInputs.find(i => i.accept?.includes('pdf') || i.name?.toLowerCase().includes('pdf') || (i.parentElement && i.parentElement.innerText.includes('PDF')));
+
+  function assignFile(input, file) {
+    if (!input) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // TẠO GIAO DIỆN
+  const container = document.createElement('div');
+  container.id = 'htp-upgrade-loaded';
+  container.style.cssText = 'background: #f8fafc; border: 2px solid #3b82f6; border-radius: 8px; padding: 16px; margin-bottom: 20px; font-family: sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.05);';
+  container.innerHTML = `
+    <h3 style="margin-top:0; color:#1e293b; font-size:16px;">Bảng Nhập Liệu Thông Minh HTP</h3>
+    <div style="margin-bottom: 12px;">
+      <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:4px; color:#334155;">1. Hình ảnh (Click & dán Ctrl + V)</label>
+      <div id="htp-img-zone" tabindex="0" style="border: 2px dashed #94a3b8; border-radius: 6px; padding: 14px; text-align: center; background: #fff; cursor: pointer; outline: none;">
+        <span id="htp-img-text" style="font-size: 13px; color: #64748b;">Click vào đây rồi nhấn <b>Ctrl + V</b> để dán ảnh</span>
+        <img id="htp-img-preview" style="max-width: 100%; max-height: 120px; display: none; margin: 8px auto 0; border-radius: 4px;" />
+      </div>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:4px; color:#334155;">2. Mô tả sản phẩm</label>
+      <textarea id="htp-desc-input" placeholder="Nhập hoặc dán mô tả tại đây..." style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; box-sizing: border-box;"></textarea>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:4px; color:#334155;">3. Thông số kỹ thuật</label>
+      <textarea id="htp-spec-input" placeholder="Dán thông số (JSON, bảng Excel, Text PDF)..." style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace; font-size: 12.5px; box-sizing: border-box;"></textarea>
+      <div id="htp-spec-status" style="font-size: 12px; font-weight: bold; margin-top: 4px;"></div>
+    </div>
+    <div style="margin-bottom: 8px; padding: 10px; background: #eff6ff; border-radius: 6px; border: 1px solid #bfdbfe;">
+      <label style="display:block; font-weight:bold; font-size:13px; margin-bottom:4px; color:#1d4ed8;">4. Nhúng file PDF từ Link</label>
+      <div style="display: flex; gap: 8px;">
+        <input type="text" id="htp-pdf-url" placeholder="Dán link PDF vào đây..." style="flex:1; padding: 8px; border: 1px solid #93c5fd; border-radius: 6px; font-size: 13px;" />
+        <button type="button" id="htp-pdf-btn" style="padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">Tải & Gắn file</button>
+      </div>
+      <div id="htp-pdf-status" style="font-size: 12px; font-weight: bold; margin-top: 6px; color: #64748b;">(Nếu lỗi tường lửa CORS, vui lòng tải thủ công rồi kéo thả).</div>
+    </div>
+  `;
+  panel.insertBefore(container, panel.firstChild);
+
+  // XỬ LÝ ẢNH
+  document.addEventListener('paste', function(e) {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (let item of items) {
+      if (item.type.indexOf('image') === 0) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width; canvas.height = img.height;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            canvas.toBlob(webpBlob => {
+              assignFile(imgInput, new File([webpBlob], 'images.webp', { type: 'image/webp' }));
+              document.getElementById('htp-img-preview').src = URL.createObjectURL(webpBlob);
+              document.getElementById('htp-img-preview').style.display = 'block';
+              document.getElementById('htp-img-text').innerHTML = '✅ <b>Đã nhận ảnh (images.webp)</b>';
+            }, 'image/webp', 0.9);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(item.getAsFile());
+        break;
+      }
+    }
+  });
+
+  // XỬ LÝ MÔ TẢ
+  document.getElementById('htp-desc-input').addEventListener('input', e => {
+    const v = e.target.value;
+    if(!v.trim()) { if(descInput) descInput.value = ''; return; }
+    assignFile(descInput, new File([new Blob([v], {type: 'text/plain;charset=utf-8'})], 'descriptions.txt', {type: 'text/plain'}));
+  });
+
+  // XỬ LÝ THÔNG SỐ
+  document.getElementById('htp-spec-input').addEventListener('input', e => {
+    const v = e.target.value.trim();
+    const st = document.getElementById('htp-spec-status');
+    if(!v) { if(specInput) specInput.value = ''; st.textContent = ''; return; }
+    let jsStr = '';
+    try { jsStr = JSON.stringify(JSON.parse(v), null, 2); } 
+    catch(err) {
+      const lines = v.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+      const obj = {};
+      if (lines.some(l => l.includes(':') || l.includes('\t'))) {
+        lines.forEach((l, i) => {
+          let s = l.indexOf(':'); if(s === -1) s = l.indexOf('\t');
+          if(s !== -1) obj[l.slice(0,s).trim()] = l.slice(s+1).trim();
+          else obj['Thông số '+(i+1)] = l;
+        });
+      } else {
+        for (let i = 0; i < lines.length; i += 2) obj[lines[i]] = lines[i+1] || "";
+      }
+      jsStr = JSON.stringify(obj, null, 2);
+    }
+    assignFile(specInput, new File([new Blob([jsStr], {type: 'application/json'})], 'specification.json', {type: 'application/json'}));
+    st.style.color = '#16a34a'; st.textContent = '✓ Đã tạo JSON thành công';
+  });
+
+  // XỬ LÝ PDF
+  document.getElementById('htp-pdf-btn').addEventListener('click', async () => {
+    const url = document.getElementById('htp-pdf-url').value.trim();
+    if (!url) return;
+    const btn = document.getElementById('htp-pdf-btn');
+    const st = document.getElementById('htp-pdf-status');
+    btn.disabled = true; btn.textContent = 'Đang tải...';
+    st.style.color = '#2563eb'; st.innerHTML = '⏳ Đang kéo file PDF...';
+    
+    let success = false;
+    for (let proxy of ['', 'https://api.codetabs.com/v1/proxy?quest=', 'https://corsproxy.io/?']) {
+      try {
+        const res = await fetch(proxy ? proxy + encodeURIComponent(url) : url);
+        if (res.ok && !(res.headers.get('content-type') || '').includes('text/html')) {
+          const blob = await res.blob();
+          if (blob.size > 1024) {
+            let fn = url.substring(url.lastIndexOf('/') + 1).split('?')[0] || 'document.pdf';
+            if (!fn.toLowerCase().endsWith('.pdf')) fn += '.pdf';
+            assignFile(pdfInput, new File([blob], fn, { type: 'application/pdf' }));
+            st.style.color = '#16a34a'; st.innerHTML = '✅ <b>Thành công!</b> Đã nạp: <u>' + fn + '</u>';
+            success = true; break;
+          }
+        }
+      } catch (err) {}
+    }
+    if (!success) { st.style.color = '#dc2626'; st.innerHTML = '❌ Website bị khóa tải. Hãy tải thủ công.'; }
+    btn.disabled = false; btn.textContent = 'Tải & Gắn file';
+  });
+
+  // KIỂM TRA MÃ HIỆU - ẨN CÁC DÒNG KHÔNG TRÙNG
+  const labels = Array.from(document.querySelectorAll('label'));
+  const codeLabel = labels.find(l => l.innerText.toLowerCase().includes('mã hiệu'));
+  
+  if (codeLabel) {
+      const codeInput = codeLabel.parentElement.querySelector('input');
+      if (codeInput) {
+          const warningMsg = document.createElement('div');
+          warningMsg.style.cssText = 'color: #dc2626; font-size: 13px; font-weight: bold; margin-top: 6px; display: none;';
+          codeInput.parentNode.insertBefore(warningMsg, codeInput.nextSibling);
+
+          const tableRows = document.querySelectorAll('tbody tr');
+          const ths = Array.from(document.querySelectorAll('th'));
+          const codeThIndex = ths.findIndex(th => th.innerText.toLowerCase().includes('mã hiệu'));
+
+          // Hàm khôi phục lại toàn bộ bảng
+          function resetTable() {
+              tableRows.forEach(row => {
+                  row.style.display = '';
+                  row.style.backgroundColor = '';
+              });
+          }
+
+          codeInput.addEventListener('input', function(e) {
+              const currentVal = e.target.value.trim().toLowerCase();
+              
+              // Nếu ô nhập trống, khôi phục bảng
+              if (currentVal === '') {
+                  resetTable();
+                  warningMsg.style.display = 'none';
+                  codeInput.style.border = '1px solid #cbd5e1';
+                  codeInput.style.background = '#fff';
+                  return;
+              }
+
+              let isDuplicate = false;
+
+              // Vòng quét 1: Kiểm tra xem có mã trùng không
+              if (codeThIndex !== -1) {
+                  tableRows.forEach(row => {
+                      const tds = row.querySelectorAll('td');
+                      if (tds[codeThIndex] && tds[codeThIndex].innerText.trim().toLowerCase() === currentVal) {
+                          isDuplicate = true;
+                      }
+                  });
+              }
+
+              // Xử lý hiển thị dựa trên kết quả quét
+              if (isDuplicate) {
+                  tableRows.forEach(row => {
+                      const tds = row.querySelectorAll('td');
+                      if (tds[codeThIndex]) {
+                          if (tds[codeThIndex].innerText.trim().toLowerCase() === currentVal) {
+                              row.style.display = ''; // Hiện dòng trùng
+                              row.style.backgroundColor = '#fbbf24'; // Bôi màu cam
+                          } else {
+                              row.style.display = 'none'; // Ẩn các dòng khác
+                          }
+                      }
+                  });
+
+                  warningMsg.innerHTML = '⚠️ Mã <b>' + e.target.value + '</b> đã tồn tại trên bảng!';
+                  warningMsg.style.display = 'block';
+                  codeInput.style.border = '2px solid #dc2626';
+                  codeInput.style.background = '#fef2f2';
+              } else {
+                  resetTable(); // Mã an toàn, hiện lại toàn bộ bảng
+                  warningMsg.style.display = 'none';
+                  codeInput.style.border = '2px solid #16a34a';
+                  codeInput.style.background = '#f0fdf4';
+              }
+          });
+      }
+  }
+})();
